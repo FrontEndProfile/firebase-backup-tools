@@ -150,22 +150,37 @@ class BackupService {
         try {
             progressCallback('Creating backup files...', this.calculateProgress());
 
+            // Create a map to organize files by folder
+            const folderMap = {};
+            
             // Save each media file individually
             for (const file of this.storageFiles) {
                 try {
-                    // Get just the filename without path
-                    const fileName = file.path.split('/').pop();
+                    const pathParts = file.path.split('/');
+                    const folderName = pathParts[0];
+                    const fileName = pathParts[pathParts.length - 1];
+
+                    // Create folder if it doesn't exist
+                    if (!folderMap[folderName]) {
+                        folderMap[folderName] = [];
+                    }
 
                     // Create a File object with proper MIME type
                     const fileObj = new File(
                         [file.blob],
-                        file.path,
+                        fileName,
                         { type: file.type }
                     );
 
+                    // Add file to folder
+                    folderMap[folderName].push({
+                        file: fileObj,
+                        path: file.path
+                    });
+                    
                     // Save file with full path structure
                     saveAs(fileObj, file.path);
-                    progressCallback(`Saved file: ${fileName}`, this.calculateProgress());
+                    progressCallback(`Saved file: ${fileName} in ${folderName}`, this.calculateProgress());
                 } catch (saveError) {
                     console.error('Error saving file:', file.path, saveError);
                 }
