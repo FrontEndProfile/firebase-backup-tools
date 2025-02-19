@@ -72,37 +72,20 @@ class BackupService {
     }
 
     async getAllCollections() {
-        const collections = [];
+        // Predefined list of collections to backup
+        const FIRESTORE_COLLECTIONS = [
+            'FAQs',
+            'blogs',
+            'blogsDummy',
+            'contacts',
+            'gallery',
+            'media',
+            'products',
+            'quotes',
+            'subscriptions'
+        ];
 
-        // Get all collections by checking common collection names
-        const commonCollections = ['products', 'blogs', 'gallery', 'users', 'orders', 'settings'];
-        for (const colName of commonCollections) {
-            try {
-                const colRef = firebaseConfig.db.collection(colName);
-                const snapshot = await colRef.limit(1).get();
-                if (!snapshot.empty) {
-                    collections.push(colName);
-                }
-            } catch (e) {
-                console.warn(`Collection ${colName} not found`);
-            }
-        }
-
-        // Also try to get any other collections by using Firestore queries
-        try {
-            const querySnapshot = await firebaseConfig.db.runQuery(firebaseConfig.db.collection('__collection__'));
-            if (querySnapshot) {
-                for (const doc of querySnapshot) {
-                    if (doc.id && !collections.includes(doc.id)) {
-                        collections.push(doc.id);
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Could not fetch additional collections:', e);
-        }
-
-        return collections;
+        return FIRESTORE_COLLECTIONS;
     }
 
     async backupStorage(progressCallback) {
