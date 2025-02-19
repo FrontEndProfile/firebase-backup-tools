@@ -12,7 +12,7 @@ class BackupService {
         const day = date.getDate().toString().padStart(2, '0');
         const month = date.toLocaleString('default', { month: 'short' });
         const timestamp = date.getTime();
-        return `${day}_${month}_backup_${timestamp}`;
+        return `backup_${day}_${month}_${timestamp}`;
     }
 
     async startBackup(includeFirestore, includeStorage, progressCallback) {
@@ -30,7 +30,7 @@ class BackupService {
                 await this.backupStorage(progressCallback);
             }
 
-            await this.createBackupFiles();
+            await this.createBackupFiles(progressCallback);
             progressCallback('Backup completed successfully!', 100);
         } catch (error) {
             console.error('Backup error:', error);
@@ -41,7 +41,6 @@ class BackupService {
 
     async backupFirestore(progressCallback) {
         try {
-            // Get all collections dynamically
             const collections = await this.getAllCollections();
             this.totalItems += collections.length;
 
@@ -61,8 +60,7 @@ class BackupService {
                     });
                     this.processedItems++;
                 } catch (collectionError) {
-                    console.warn(`Collection ${collectionName} not found or error:`, collectionError);
-                    // Continue with next collection even if one fails
+                    console.error(`Error processing collection ${collectionName}:`, collectionError);
                 }
             }
         } catch (error) {
@@ -72,7 +70,6 @@ class BackupService {
     }
 
     async getAllCollections() {
-        // Predefined list of collections to backup
         const FIRESTORE_COLLECTIONS = [
             'FAQs',
             'blogs',
@@ -84,27 +81,22 @@ class BackupService {
             'quotes',
             'subscriptions'
         ];
-
         return FIRESTORE_COLLECTIONS;
     }
 
     async backupStorage(progressCallback) {
         try {
-            // Verify storage is initialized
             if (!firebaseConfig.storage) {
                 throw new Error('Firebase Storage is not initialized');
             }
 
-            // Get root reference
             const storageRef = firebaseConfig.storage.ref();
             progressCallback('Starting storage backup...', this.calculateProgress());
 
-            // List all items recursively
             const items = await this.listAllFiles(storageRef);
             console.log('Found storage items:', items.length);
             this.totalItems += items.length;
 
-            // Download each file
             for (const item of items) {
                 try {
                     progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
@@ -112,27 +104,21 @@ class BackupService {
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
 
-                    console.log('Got download URL for:', item.fullPath);
-
                     const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
                     const blob = await response.blob();
-
-                    console.log('Successfully downloaded:', item.fullPath);
-
                     this.storageFiles.push({
                         path: item.fullPath,
                         metadata: metadata,
                         blob: blob,
-                        type: metadata.contentType
+                        type: metadata.contentType || 'application/octet-stream'
                     });
 
                     this.processedItems++;
+                    progressCallback(`Downloaded: ${item.fullPath}`, this.calculateProgress());
                 } catch (downloadError) {
                     console.error(`Error downloading file ${item.fullPath}:`, downloadError);
-                    progressCallback(`Failed to download: ${item.fullPath}`, this.calculateProgress());
                 }
             }
         } catch (error) {
@@ -144,31 +130,45 @@ class BackupService {
     async listAllFiles(ref) {
         const allFiles = [];
         try {
-            console.log('Listing files in:', ref.fullPath || 'root');
-
-            // List all items in current directory
             const result = await ref.listAll();
-
-            // Add all files from current directory
             allFiles.push(...result.items);
-            console.log('Found files in current directory:', result.items.length);
 
-            // Recursively list files in subdirectories
             for (const prefixRef of result.prefixes) {
-                console.log('Exploring subdirectory:', prefixRef.fullPath);
                 const subDirFiles = await this.listAllFiles(prefixRef);
                 allFiles.push(...subDirFiles);
             }
         } catch (error) {
             console.error('Error listing files:', error);
         }
-
         return allFiles;
     }
 
-    async createBackupFiles() {
+    async createBackupFiles(progressCallback) {
         try {
-            // Create a backup object with timestamp
+            progressCallback('Creating backup files...', this.calculateProgress());
+
+            // Save each media file individually
+            for (const file of this.storageFiles) {
+                try {
+                    // Get just the filename without path
+                    const fileName = file.path.split('/').pop();
+
+                    // Create a File object with proper MIME type
+                    const fileObj = new File(
+                        [file.blob],
+                        fileName,
+                        { type: file.type }
+                    );
+
+                    // Save file directly with FileSaver.js
+                    saveAs(fileObj, fileName);
+                    progressCallback(`Saved file: ${fileName}`, this.calculateProgress());
+                } catch (saveError) {
+                    console.error('Error saving file:', file.path, saveError);
+                }
+            }
+
+            // Create and save the JSON backup data
             const backup = {
                 timestamp: new Date().toISOString(),
                 folder_name: this.backupFolderName,
@@ -179,32 +179,14 @@ class BackupService {
                 }))
             };
 
-            console.log('Creating backup files...');
-            console.log('Total storage files to save:', this.storageFiles.length);
+            const dbBlob = new Blob(
+                [JSON.stringify(backup, null, 2)],
+                { type: 'application/json' }
+            );
 
-            // Create media folder data
-            for (const file of this.storageFiles) {
-                const folderPath = `${this.backupFolderName}/media/${file.path}`;
-                console.log('Saving file to:', folderPath);
-
-                try {
-                    // Create File object with proper name and type
-                    const fileObj = new File([file.blob], 
-                        file.path.split('/').pop(), 
-                        { type: file.type }
-                    );
-                    saveAs(fileObj, folderPath);
-                } catch (saveError) {
-                    console.error('Error saving file:', folderPath, saveError);
-                }
-            }
-
-            // Save the database JSON in the backup folder
-            const dbBlob = new Blob([JSON.stringify(backup, null, 2)], 
-                {type: 'application/json'});
-            saveAs(dbBlob, `${this.backupFolderName}/database.json`);
-
-            console.log('Backup files creation completed');
+            // Save the database JSON file
+            saveAs(dbBlob, 'backup_data.json');
+            progressCallback('Backup files saved successfully', 100);
         } catch (error) {
             console.error('Error creating backup files:', error);
             throw error;
