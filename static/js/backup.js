@@ -92,9 +92,11 @@ class BackupService {
         try {
             // Get root reference
             const storageRef = firebaseConfig.storage.ref();
+            progressCallback('Starting storage backup...', this.calculateProgress());
 
             // List all items recursively
             const items = await this.listAllFiles(storageRef);
+            console.log('Found storage items:', items.length);
             this.totalItems += items.length;
 
             // Download each file
@@ -107,6 +109,7 @@ class BackupService {
                     const response = await fetch(url);
                     const blob = await response.blob();
 
+                    console.log('Successfully downloaded:', item.fullPath);
                     this.storageFiles.push({
                         path: item.fullPath,
                         metadata: metadata,
@@ -115,64 +118,80 @@ class BackupService {
                     });
 
                     this.processedItems++;
-                } catch (error) {
-                    console.error(`Error downloading file ${item.fullPath}:`, error);
-                    // Continue with next file even if one fails
+                } catch (downloadError) {
+                    console.error(`Error downloading file ${item.fullPath}:`, downloadError);
+                    progressCallback(`Failed to download: ${item.fullPath}`, this.calculateProgress());
                 }
             }
         } catch (error) {
             console.error('Storage backup error:', error);
-            throw error;
+            throw new Error(`Storage backup failed: ${error.message}`);
         }
     }
 
     async listAllFiles(ref) {
         const allFiles = [];
+        try {
+            console.log('Listing files in:', ref.fullPath || 'root');
 
-        // List all items in current directory
-        const result = await ref.listAll();
+            // List all items in current directory
+            const result = await ref.listAll();
 
-        // Add all files from current directory
-        allFiles.push(...result.items);
+            // Add all files from current directory
+            allFiles.push(...result.items);
+            console.log('Found files in current directory:', result.items.length);
 
-        // Recursively list files in subdirectories
-        for (const prefixRef of result.prefixes) {
-            const subDirFiles = await this.listAllFiles(prefixRef);
-            allFiles.push(...subDirFiles);
+            // Recursively list files in subdirectories
+            for (const prefixRef of result.prefixes) {
+                console.log('Exploring subdirectory:', prefixRef.fullPath);
+                const subDirFiles = await this.listAllFiles(prefixRef);
+                allFiles.push(...subDirFiles);
+            }
+        } catch (error) {
+            console.error('Error listing files:', error);
         }
 
         return allFiles;
     }
 
     async createBackupFiles() {
-        // Create a backup object with timestamp
-        const backup = {
-            timestamp: new Date().toISOString(),
-            folder_name: this.backupFolderName,
-            firestore: this.firestoreData,
-            storage_metadata: this.storageFiles.map(file => ({
-                path: file.path,
-                metadata: file.metadata
-            }))
-        };
+        try {
+            // Create a backup object with timestamp
+            const backup = {
+                timestamp: new Date().toISOString(),
+                folder_name: this.backupFolderName,
+                firestore: this.firestoreData,
+                storage_metadata: this.storageFiles.map(file => ({
+                    path: file.path,
+                    metadata: file.metadata
+                }))
+            };
 
-        // Create media folder data
-        const mediaFiles = this.storageFiles.map(file => ({
-            path: file.path,
-            blob: file.blob,
-            type: file.type
-        }));
+            console.log('Creating backup files...');
+            console.log('Total storage files to save:', this.storageFiles.length);
 
-        // Save each media file in the backup folder
-        for (const file of mediaFiles) {
-            const fileName = `${this.backupFolderName}/media/${file.path.replace(/[^a-z0-9]/gi, '_')}`;
-            saveAs(file.blob, fileName);
+            // Create media folder data
+            for (const file of this.storageFiles) {
+                const folderPath = `${this.backupFolderName}/media/${file.path}`;
+                console.log('Saving file to:', folderPath);
+
+                try {
+                    saveAs(file.blob, folderPath);
+                } catch (saveError) {
+                    console.error('Error saving file:', folderPath, saveError);
+                }
+            }
+
+            // Save the database JSON in the backup folder
+            const dbBlob = new Blob([JSON.stringify(backup, null, 2)], 
+                {type: 'application/json'});
+            saveAs(dbBlob, `${this.backupFolderName}/database.json`);
+
+            console.log('Backup files creation completed');
+        } catch (error) {
+            console.error('Error creating backup files:', error);
+            throw error;
         }
-
-        // Save the database JSON in the backup folder
-        const dbBlob = new Blob([JSON.stringify(backup, null, 2)], 
-            {type: 'application/json'});
-        saveAs(dbBlob, `${this.backupFolderName}/database.json`);
     }
 
     calculateProgress() {
