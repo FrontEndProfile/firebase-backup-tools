@@ -74,24 +74,32 @@ class BackupService {
     async getAllCollections() {
         const collections = [];
 
-        // Get all collections at root level
-        const rootCollections = await firebaseConfig.db.getCollections();
-        if (rootCollections && rootCollections.length > 0) {
-            collections.push(...rootCollections.map(col => col.id));
-        } else {
-            // Fallback: Try accessing common collection names
-            const commonCollections = ['products', 'blogs', 'gallery', 'users', 'orders', 'settings'];
-            for (const colName of commonCollections) {
-                try {
-                    const colRef = firebaseConfig.db.collection(colName);
-                    const snapshot = await colRef.limit(1).get();
-                    if (!snapshot.empty) {
-                        collections.push(colName);
+        // Get all collections by checking common collection names
+        const commonCollections = ['products', 'blogs', 'gallery', 'users', 'orders', 'settings'];
+        for (const colName of commonCollections) {
+            try {
+                const colRef = firebaseConfig.db.collection(colName);
+                const snapshot = await colRef.limit(1).get();
+                if (!snapshot.empty) {
+                    collections.push(colName);
+                }
+            } catch (e) {
+                console.warn(`Collection ${colName} not found`);
+            }
+        }
+
+        // Also try to get any other collections by using Firestore queries
+        try {
+            const querySnapshot = await firebaseConfig.db.runQuery(firebaseConfig.db.collection('__collection__'));
+            if (querySnapshot) {
+                for (const doc of querySnapshot) {
+                    if (doc.id && !collections.includes(doc.id)) {
+                        collections.push(doc.id);
                     }
-                } catch (e) {
-                    console.warn(`Collection ${colName} not found`);
                 }
             }
+        } catch (e) {
+            console.warn('Could not fetch additional collections:', e);
         }
 
         return collections;
