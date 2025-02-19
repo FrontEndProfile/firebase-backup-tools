@@ -104,16 +104,32 @@ class BackupService {
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
 
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-                    const blob = await response.blob();
-                    this.storageFiles.push({
-                        path: item.fullPath,
-                        metadata: metadata,
-                        blob: blob,
-                        type: metadata.contentType || 'application/octet-stream'
+                    const response = await fetch(url, {
+                        headers: {
+                            'Origin': window.location.origin
+                        },
+                        mode: 'cors'
                     });
+                    
+                    if (!response.ok) {
+                        console.warn(`Skipping file ${item.fullPath} due to download error`);
+                        progressCallback(`Warning: Could not download ${item.fullPath}`, this.calculateProgress());
+                        return;
+                    }
+
+                    try {
+                        const blob = await response.blob();
+                        this.storageFiles.push({
+                            path: item.fullPath,
+                            metadata: metadata,
+                            blob: blob,
+                            type: metadata.contentType || 'application/octet-stream'
+                        });
+                        progressCallback(`Successfully downloaded: ${item.fullPath}`, this.calculateProgress());
+                    } catch (blobError) {
+                        console.warn(`Error processing file ${item.fullPath}:`, blobError);
+                        progressCallback(`Warning: Could not process ${item.fullPath}`, this.calculateProgress());
+                    }
 
                     this.processedItems++;
                     progressCallback(`Downloaded: ${item.fullPath}`, this.calculateProgress());
