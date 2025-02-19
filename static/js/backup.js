@@ -150,8 +150,8 @@ class BackupService {
         try {
             progressCallback('Creating backup files...', this.calculateProgress());
 
-            // Create a map to organize files by folder
-            const folderMap = {};
+            // Create zip object to store folders
+            const zip = new JSZip();
             
             // Save each media file individually
             for (const file of this.storageFiles) {
@@ -160,33 +160,16 @@ class BackupService {
                     const folderName = pathParts[0];
                     const fileName = pathParts[pathParts.length - 1];
 
-                    // Create folder if it doesn't exist
-                    if (!folderMap[folderName]) {
-                        folderMap[folderName] = [];
-                    }
-
-                    // Create a File object with proper MIME type
-                    const fileObj = new File(
-                        [file.blob],
-                        fileName,
-                        { type: file.type }
-                    );
-
-                    // Add file to folder
-                    folderMap[folderName].push({
-                        file: fileObj,
-                        path: file.path
-                    });
+                    // Add file to appropriate folder in zip
+                    zip.folder(folderName).file(fileName, file.blob);
                     
-                    // Save file with full path structure
-                    saveAs(fileObj, file.path);
-                    progressCallback(`Saved file: ${fileName} in ${folderName}`, this.calculateProgress());
+                    progressCallback(`Added file: ${fileName} to ${folderName} folder`, this.calculateProgress());
                 } catch (saveError) {
                     console.error('Error saving file:', file.path, saveError);
                 }
             }
 
-            // Create and save the JSON backup data
+            // Add backup data JSON to zip
             const backup = {
                 timestamp: new Date().toISOString(),
                 folder_name: this.backupFolderName,
@@ -197,13 +180,11 @@ class BackupService {
                 }))
             };
 
-            const dbBlob = new Blob(
-                [JSON.stringify(backup, null, 2)],
-                { type: 'application/json' }
-            );
+            zip.file('backup_data.json', JSON.stringify(backup, null, 2));
 
-            // Save the database JSON file
-            saveAs(dbBlob, 'backup_data.json');
+            // Generate and download zip file
+            const zipBlob = await zip.generateAsync({type: 'blob'});
+            saveAs(zipBlob, `${this.backupFolderName}.zip`);
             progressCallback('Backup files saved successfully', 100);
         } catch (error) {
             console.error('Error creating backup files:', error);
