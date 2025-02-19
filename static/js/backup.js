@@ -99,25 +99,24 @@ class BackupService {
 
             for (const item of items) {
                 try {
-                    progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
+                    progressCallback(`Processing: ${item.fullPath}`, this.calculateProgress());
 
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
-
-                    const response = await fetch(url, {
-                        mode: 'cors',
-                        credentials: 'omit',
-                        headers: {
-                            'Accept': '*/*'
-                        }
-                    });
                     
-                    if (!response.ok) {
-                        console.warn(`Skipping file ${item.fullPath} due to download error`);
-                        progressCallback(`Warning: Could not download ${item.fullPath}`, this.calculateProgress());
-                        this.processedItems++;
-                        return;
-                    }
+                    // Create clickable link
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.target = '_blank';
+                    link.textContent = `Download: ${item.fullPath}`;
+                    document.getElementById('fileList').appendChild(link);
+                    document.getElementById('fileList').appendChild(document.createElement('br'));
+                    
+                    this.processedItems++;
+                    progressCallback(`URL ready for: ${item.fullPath}`, this.calculateProgress());
+                    
+                    // Skip actual download
+                    continue;
 
                     try {
                         const blob = await response.blob();
