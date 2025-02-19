@@ -4,6 +4,15 @@ class BackupService {
         this.storageFiles = [];
         this.totalItems = 0;
         this.processedItems = 0;
+        this.backupFolderName = this.generateBackupFolderName();
+    }
+
+    generateBackupFolderName() {
+        const date = new Date();
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = date.toLocaleString('default', { month: 'short' });
+        const timestamp = date.getTime();
+        return `${day}_${month}_backup_${timestamp}`;
     }
 
     async startBackup(includeFirestore, includeStorage, progressCallback) {
@@ -21,7 +30,7 @@ class BackupService {
                 await this.backupStorage(progressCallback);
             }
 
-            await this.createBackupZip();
+            await this.createBackupFiles();
             progressCallback('Backup completed successfully!', 100);
         } catch (error) {
             console.error('Backup error:', error);
@@ -32,8 +41,8 @@ class BackupService {
 
     async backupFirestore(progressCallback) {
         try {
-            // List of collections to backup
-            const collections = ['products', 'blogs', 'gallery'];
+            // Get all collections dynamically
+            const collections = await this.getAllCollections();
             this.totalItems += collections.length;
 
             for (const collectionName of collections) {
@@ -60,6 +69,32 @@ class BackupService {
             console.error('Firestore backup error:', error);
             throw error;
         }
+    }
+
+    async getAllCollections() {
+        const collections = [];
+
+        // Get all collections at root level
+        const rootCollections = await firebaseConfig.db.getCollections();
+        if (rootCollections && rootCollections.length > 0) {
+            collections.push(...rootCollections.map(col => col.id));
+        } else {
+            // Fallback: Try accessing common collection names
+            const commonCollections = ['products', 'blogs', 'gallery', 'users', 'orders', 'settings'];
+            for (const colName of commonCollections) {
+                try {
+                    const colRef = firebaseConfig.db.collection(colName);
+                    const snapshot = await colRef.limit(1).get();
+                    if (!snapshot.empty) {
+                        collections.push(colName);
+                    }
+                } catch (e) {
+                    console.warn(`Collection ${colName} not found`);
+                }
+            }
+        }
+
+        return collections;
     }
 
     async backupStorage(progressCallback) {
@@ -97,10 +132,11 @@ class BackupService {
         }
     }
 
-    async createBackupZip() {
+    async createBackupFiles() {
         // Create a backup object with timestamp
         const backup = {
             timestamp: new Date().toISOString(),
+            folder_name: this.backupFolderName,
             firestore: this.firestoreData,
             storage_metadata: this.storageFiles.map(file => ({
                 path: file.path,
@@ -115,16 +151,16 @@ class BackupService {
             type: file.type
         }));
 
-        // Save each media file
+        // Save each media file in the backup folder
         for (const file of mediaFiles) {
-            const fileName = `firebase-media-${file.path.replace(/[^a-z0-9]/gi, '_')}`;
+            const fileName = `${this.backupFolderName}/media/${file.path.replace(/[^a-z0-9]/gi, '_')}`;
             saveAs(file.blob, fileName);
         }
 
-        // Save the database JSON last
+        // Save the database JSON in the backup folder
         const dbBlob = new Blob([JSON.stringify(backup, null, 2)], 
             {type: 'application/json'});
-        saveAs(dbBlob, `firebase-backup-${new Date().toISOString()}.json`);
+        saveAs(dbBlob, `${this.backupFolderName}/database.json`);
     }
 
     calculateProgress() {
