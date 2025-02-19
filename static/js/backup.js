@@ -105,15 +105,17 @@ class BackupService {
                     const metadata = await item.getMetadata();
 
                     const response = await fetch(url, {
+                        mode: 'cors',
+                        credentials: 'omit',
                         headers: {
-                            'Origin': window.location.origin
-                        },
-                        mode: 'cors'
+                            'Accept': '*/*'
+                        }
                     });
                     
                     if (!response.ok) {
                         console.warn(`Skipping file ${item.fullPath} due to download error`);
                         progressCallback(`Warning: Could not download ${item.fullPath}`, this.calculateProgress());
+                        this.processedItems++;
                         return;
                     }
 
