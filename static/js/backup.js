@@ -89,13 +89,16 @@ class BackupService {
     }
 
     async backupStorage(progressCallback) {
-        const storageRef = firebaseConfig.storage.ref();
-
         try {
-            const items = await storageRef.listAll();
-            this.totalItems += items.items.length;
+            // Get root reference
+            const storageRef = firebaseConfig.storage.ref();
 
-            for (const item of items.items) {
+            // List all items recursively
+            const items = await this.listAllFiles(storageRef);
+            this.totalItems += items.length;
+
+            // Download each file
+            for (const item of items) {
                 progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
 
                 try {
@@ -121,6 +124,24 @@ class BackupService {
             console.error('Storage backup error:', error);
             throw error;
         }
+    }
+
+    async listAllFiles(ref) {
+        const allFiles = [];
+
+        // List all items in current directory
+        const result = await ref.listAll();
+
+        // Add all files from current directory
+        allFiles.push(...result.items);
+
+        // Recursively list files in subdirectories
+        for (const prefixRef of result.prefixes) {
+            const subDirFiles = await this.listAllFiles(prefixRef);
+            allFiles.push(...subDirFiles);
+        }
+
+        return allFiles;
     }
 
     async createBackupFiles() {
