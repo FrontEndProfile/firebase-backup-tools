@@ -90,6 +90,11 @@ class BackupService {
 
     async backupStorage(progressCallback) {
         try {
+            // Verify storage is initialized
+            if (!firebaseConfig.storage) {
+                throw new Error('Firebase Storage is not initialized');
+            }
+
             // Get root reference
             const storageRef = firebaseConfig.storage.ref();
             progressCallback('Starting storage backup...', this.calculateProgress());
@@ -101,15 +106,22 @@ class BackupService {
 
             // Download each file
             for (const item of items) {
-                progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
-
                 try {
+                    progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
+
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
+
+                    console.log('Got download URL for:', item.fullPath);
+
                     const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                     const blob = await response.blob();
 
                     console.log('Successfully downloaded:', item.fullPath);
+
                     this.storageFiles.push({
                         path: item.fullPath,
                         metadata: metadata,
@@ -176,7 +188,12 @@ class BackupService {
                 console.log('Saving file to:', folderPath);
 
                 try {
-                    saveAs(file.blob, folderPath);
+                    // Create File object with proper name and type
+                    const fileObj = new File([file.blob], 
+                        file.path.split('/').pop(), 
+                        { type: file.type }
+                    );
+                    saveAs(fileObj, folderPath);
                 } catch (saveError) {
                     console.error('Error saving file:', folderPath, saveError);
                 }
