@@ -211,4 +211,4 @@ class BackupService {
     }
 }
 
-const backupService = new BackupService();
+window.backupService = new BackupService();
