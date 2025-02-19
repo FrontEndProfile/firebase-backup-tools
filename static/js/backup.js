@@ -104,22 +104,21 @@ class BackupService {
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
                     
-                    // Create clickable link
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.target = '_blank';
-                    link.textContent = `Download: ${item.fullPath}`;
-                    document.getElementById('fileList').appendChild(link);
-                    document.getElementById('fileList').appendChild(document.createElement('br'));
+                    progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
                     
-                    this.processedItems++;
-                    progressCallback(`URL ready for: ${item.fullPath}`, this.calculateProgress());
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                        headers: {
+                            'Origin': window.location.origin
+                        }
+                    });
                     
-                    // Skip actual download
-                    continue;
-
-                    try {
-                        const blob = await response.blob();
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const blob = await response.blob();
                         this.storageFiles.push({
                             path: item.fullPath,
                             metadata: metadata,
