@@ -156,12 +156,12 @@ class BackupService {
                     // Create a File object with proper MIME type
                     const fileObj = new File(
                         [file.blob],
-                        fileName,
+                        file.path,
                         { type: file.type }
                     );
 
-                    // Save file directly with FileSaver.js
-                    saveAs(fileObj, fileName);
+                    // Save file with full path structure
+                    saveAs(fileObj, file.path);
                     progressCallback(`Saved file: ${fileName}`, this.calculateProgress());
                 } catch (saveError) {
                     console.error('Error saving file:', file.path, saveError);
