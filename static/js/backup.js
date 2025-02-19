@@ -32,22 +32,29 @@ class BackupService {
 
     async backupFirestore(progressCallback) {
         try {
-            const collections = await firebaseConfig.db.listCollections();
+            // List of collections to backup
+            const collections = ['products', 'blogs', 'gallery'];
             this.totalItems += collections.length;
 
-            for (const collection of collections) {
-                progressCallback(`Processing collection: ${collection.id}`, this.calculateProgress());
+            for (const collectionName of collections) {
+                progressCallback(`Processing collection: ${collectionName}`, this.calculateProgress());
 
-                const snapshot = await collection.get();
-                this.firestoreData[collection.id] = [];
+                try {
+                    const collectionRef = firebaseConfig.db.collection(collectionName);
+                    const snapshot = await collectionRef.get();
+                    this.firestoreData[collectionName] = [];
 
-                snapshot.forEach(doc => {
-                    this.firestoreData[collection.id].push({
-                        id: doc.id,
-                        data: doc.data()
+                    snapshot.forEach(doc => {
+                        this.firestoreData[collectionName].push({
+                            id: doc.id,
+                            data: doc.data()
+                        });
                     });
                     this.processedItems++;
-                });
+                } catch (collectionError) {
+                    console.warn(`Collection ${collectionName} not found or error:`, collectionError);
+                    // Continue with next collection even if one fails
+                }
             }
         } catch (error) {
             console.error('Firestore backup error:', error);
