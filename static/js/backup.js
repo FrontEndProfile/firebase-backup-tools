@@ -104,7 +104,10 @@ class BackupService {
                     const url = await item.getDownloadURL();
                     const metadata = await item.getMetadata();
 
-                    const response = await fetch(url);
+                    const response = await fetch(url, {
+    mode: 'cors',
+    credentials: 'include'
+});
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
                     const blob = await response.blob();
