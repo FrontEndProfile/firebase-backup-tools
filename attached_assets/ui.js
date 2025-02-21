@@ -80,7 +80,6 @@ class UI {
     }
 }
 
-// Initialize UI when document is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new UI();
 });

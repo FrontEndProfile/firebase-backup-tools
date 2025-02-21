@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Backup Tool</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="../static/css/styles.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <div id="configSection">
+            <h2>Firebase Configuration</h2>
+            <div class="mb-3">
+                <label for="apiKey" class="form-label">API Key</label>
+                <input type="text" class="form-control" id="apiKey" placeholder="Enter Firebase API Key">
+            </div>
+            <div class="mb-3">
+                <label for="projectId" class="form-label">Project ID</label>
+                <input type="text" class="form-control" id="projectId" placeholder="Enter Firebase Project ID">
+            </div>
+            <button id="connectBtn" class="btn btn-primary">Connect to Firebase</button>
+        </div>
+
+        <div id="backupSection" class="d-none">
+            <h2>Backup Options</h2>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="firestoreCheck" checked>
+                <label class="form-check-label" for="firestoreCheck">Firestore Data</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="storageCheck" checked>
+                <label class="form-check-label" for="storageCheck">Storage Files</label>
+            </div>
+            <button id="startBackupBtn" class="btn btn-success">Start Backup</button>
+        </div>
+
+        <div id="progressSection" class="mt-4 d-none">
+            <h3>Backup Progress</h3>
+            <div class="progress mb-3">
+                <div id="backupProgress" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <p id="statusText" class="mb-3">Ready to start backup...</p>
+            <div id="fileList" class="border rounded p-2 mb-3" style="height: 200px; overflow-y: auto;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <!-- Application Scripts -->
+    <!-- <script src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/backup.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}"></script> -->
+
+    <script src="../static//js/firebase-config.js"></script>
+    <script src="../static/js/backup.js"></script>
+    <script src="../static/js/ui.js"></script>
+</body>
+</html>

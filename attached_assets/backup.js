@@ -5,7 +5,6 @@ class BackupService {
         this.totalItems = 0;
         this.processedItems = 0;
         this.backupFolderName = this.generateBackupFolderName();
-        this.retryCount = 3; // Number of retries for failed downloads
     }
 
     generateBackupFolderName() {
@@ -47,6 +46,7 @@ class BackupService {
 
             for (const collectionName of collections) {
                 progressCallback(`Processing collection: ${collectionName}`, this.calculateProgress());
+
                 try {
                     const collectionRef = firebaseConfig.db.collection(collectionName);
                     const snapshot = await collectionRef.get();
@@ -98,61 +98,45 @@ class BackupService {
             this.totalItems += items.length;
 
             for (const item of items) {
-                let success = false;
-                let attempt = 0;
+                try {
+                    progressCallback(`Processing: ${item.fullPath}`, this.calculateProgress());
 
-                while (!success && attempt < this.retryCount) {
-                    try {
-                        progressCallback(`Attempt ${attempt + 1}/${this.retryCount} - Processing: ${item.fullPath}`, this.calculateProgress());
+                    const url = await item.getDownloadURL();
+                    const metadata = await item.getMetadata();
 
-                        const metadata = await item.getMetadata();
-                        const downloadURL = await item.getDownloadURL();
+                    progressCallback(`Downloading: ${item.fullPath}`, this.calculateProgress());
 
-                        // Use proxy endpoint to download
-                        const response = await fetch('/proxy-download', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ url: downloadURL })
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
+                    // Modified fetch request with proper CORS handling
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                        headers: {
+                            'Accept': 'application/octet-stream, */*',
+                            'Origin': window.location.origin
                         }
+                    });
 
-                        const result = await response.json();
-
-                        if (result.success) {
-                            // Convert hex string back to blob
-                            let binaryData;
-                            if (result.contentType.startsWith('text/')) {
-                                binaryData = new TextEncoder().encode(result.data);
-                            } else {
-                                binaryData = new Uint8Array(result.data.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-                            }
-
-                            const blob = new Blob([binaryData], { type: result.contentType });
-
-                            this.storageFiles.push({
-                                path: item.fullPath,
-                                metadata: metadata,
-                                blob: blob,
-                                type: result.contentType
-                            });
-
-                            progressCallback(`Successfully downloaded: ${item.fullPath}`, this.calculateProgress());
-                            success = true;
-                        } else {
-                            throw new Error(result.error);
-                        }
-                    } catch (error) {
-                        console.error(`Attempt ${attempt + 1} failed for ${item.fullPath}:`, error);
-                        attempt++;
-                        if (attempt === this.retryCount) {
-                            progressCallback(`Failed to download ${item.fullPath} after ${this.retryCount} attempts`, this.calculateProgress());
-                        }
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
+
+                    const blob = await response.blob();
+                    if (!blob || blob.size === 0) {
+                        throw new Error('Downloaded blob is empty');
+                    }
+
+                    console.log(`Successfully downloaded ${item.fullPath}, size: ${blob.size} bytes`);
+
+                    this.storageFiles.push({
+                        path: item.fullPath,
+                        metadata: metadata,
+                        blob: blob,
+                        type: metadata.contentType || 'application/octet-stream'
+                    });
+                    progressCallback(`Successfully downloaded: ${item.fullPath}`, this.calculateProgress());
+                } catch (blobError) {
+                    console.warn(`Error processing file ${item.fullPath}:`, blobError);
+                    progressCallback(`Warning: Could not process ${item.fullPath} - ${blobError.message}`, this.calculateProgress());
                 }
 
                 this.processedItems++;
@@ -183,13 +167,14 @@ class BackupService {
         try {
             progressCallback('Creating backup files...', this.calculateProgress());
 
+            // Create zip object
             const zip = new JSZip();
             const mainFolder = zip.folder(this.backupFolderName);
 
-            // Add Firestore data
+            // Save Firestore data
             mainFolder.file('firestore_data.json', JSON.stringify(this.firestoreData, null, 2));
 
-            // Add Storage files
+            // Create storage folder and save files with structure
             if (this.storageFiles.length > 0) {
                 const storageFolder = mainFolder.folder('storage');
                 for (const file of this.storageFiles) {
@@ -198,14 +183,11 @@ class BackupService {
                         const folderPath = pathParts.slice(0, -1).join('/');
                         const fileName = pathParts[pathParts.length - 1];
 
-                        if (folderPath) {
-                            const folder = storageFolder.folder(folderPath);
-                            folder.file(fileName, file.blob);
-                        } else {
-                            storageFolder.file(fileName, file.blob);
-                        }
+                        // Create folder structure and add file
+                        const folder = storageFolder.folder(folderPath);
+                        folder.file(fileName, file.blob);
 
-                        progressCallback(`Added file: ${fileName} to ${folderPath || 'root'} folder`, this.calculateProgress());
+                        progressCallback(`Added file: ${fileName} to ${folderPath} folder`, this.calculateProgress());
                     } catch (saveError) {
                         console.error('Error saving file:', file.path, saveError);
                     }
@@ -216,8 +198,8 @@ class BackupService {
             const backup = {
                 timestamp: new Date().toISOString(),
                 folder_name: this.backupFolderName,
-                firestore: Object.keys(this.firestoreData),
-                storage_files: this.storageFiles.map(file => ({
+                firestore: this.firestoreData,
+                storage_metadata: this.storageFiles.map(file => ({
                     path: file.path,
                     metadata: file.metadata
                 }))
@@ -225,6 +207,7 @@ class BackupService {
 
             mainFolder.file('backup_metadata.json', JSON.stringify(backup, null, 2));
 
+            // Generate and download zip file
             const zipBlob = await zip.generateAsync({type: 'blob'});
             saveAs(zipBlob, `${this.backupFolderName}.zip`);
             progressCallback('Backup files saved successfully', 100);
@@ -235,7 +218,7 @@ class BackupService {
     }
 
     calculateProgress() {
-        return this.totalItems === 0 ? 0 :
+        return this.totalItems === 0 ? 0 : 
             Math.round((this.processedItems / this.totalItems) * 100);
     }
 }
